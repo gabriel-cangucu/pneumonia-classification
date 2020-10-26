@@ -31,7 +31,7 @@ def get_params(args):
 
 
 def get_model_name(params):
-    model_name = f'vgg16_batch{params["batch_size"]}_op{params["optimizer"]}_loss{params["criterion"]}_lr{params["learning_rate"]}_epochs{params["num_epochs"]}_{params["execution_start_time"]}'
+    model_name = f'vgg16_batch{params["batch_size"]}_op{params["optimizer"]}_loss{params["criterion"]}_lr{params["learning_rate"]}_epochs{params["num_epochs"]}_{params["execution_start_time"]}.pt'
     return model_name
 
 def load_data(params):
@@ -139,12 +139,12 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
         raise ValueError("Criterion not found. Options available are 'cross_entropy' and 'log_likelihood'.")
 
     # Setting the optimizer
-    if params['optimizer'] == 'sgd':
+    if params['optimizer'] == 'SGD':
         optimizer = optim.SGD(model.parameters(), lr=params['learning_rate'])
-    elif params['optimizer'] == 'adam':
+    elif params['optimizer'] == 'ADAM':
         optimizer = optim.Adam(model.parameters(), lr=params['learning_rate'])
     else:
-        raise ValueError("Optimizer not found. Options available are 'sgd' and 'adam'.")
+        raise ValueError("Optimizer not found. Options available are 'SGD' and 'ADAM'.")
 
     print(f'\nBegan training.\n')
     start = timer()
@@ -172,7 +172,7 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
 
             # Tensor to gpu if available
             if train_on_gpu:
-                features, labels = features.cuda(). labels.cuda()
+                features, labels = features.cuda(), labels.cuda()
 
             # Setting parameter gradients to zero
             optimizer.zero_grad()
@@ -204,8 +204,8 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
             train_acc += accuracy.item() * features.size(0)
 
             # Printing intermediate results
-            time = timer() - start
-            print(f'Epoch: {epoch} \t {100 * (i + 1) / len(data_loader["train"]):.2f}% complete. {time:.2f} seconds elapsed in epoch.', end='\r')
+            time = timer() - epoch_start
+            print(f'Epoch: {epoch} \t{100 * (i + 1) / len(data_loader["train"]):.2f}% complete. {time:.2f} seconds elapsed in epoch.', end='\r')
         
         # Calculating average losses
         train_loss = train_loss / len(data_loader['train'].dataset)
@@ -215,9 +215,9 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
         # Begin the validation process
         val_loss, val_acc = evaluate_model(model, criterion, data_loader)
 
-        # If the loss decreased
+        # If the loss decreases, the model is saved
         if val_loss < best_val_loss:
-            torch.save(model.state_dict(), results_file)
+            torch.save(model.state_dict(), os.path.join(params['results_path'], results_file))
 
             best_val_loss = val_loss
             best_val_acc = val_acc
@@ -230,17 +230,14 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
         val_acc_list.append(val_acc)
         val_loss_list.append(val_loss)
 
-        print(f'\nEpoch: {epoch} \t Training Loss: {train_loss:.4f}', end='\r')
-        print(f'\tTraining Accuracy: {100 * train_acc:.2f}%')
-
-        print(f'\nEpoch: {epoch} \t Validation Loss: {val_loss:.4f}', end='\r')
-        print(f'\tValidation Accuracy: {100 * val_acc:.2f}%')
+        print(f'\nEpoch: {epoch} \tTraining Loss: {train_loss:.4f} \t\t Validation Loss: {val_loss:.4f}')
+        print(f'\t\tTraining Accuracy: {100 * train_acc:.2f}% \t Validation Accuracy: {100 * val_acc:.2f}%')
     
     # Calculating the total time elapsed and printing results
     total_time = timer() - start
     print(f'\nDone training! Total time elapsed: {total_time:.2f} seconds.')
-    print(f'Best epoch: {best_epoch} with loss {best_val_loss:.2f} and accuracy {100 * best_val_acc}.%')
-    print(f'Results saved in {results_file}.')
+    print(f'Best epoch: {best_epoch} with loss {best_val_loss:.2f} and validation accuracy {100 * best_val_acc}%.')
+    print(f'Results saved to {results_file}.')
 
 
 def main(args):
@@ -248,7 +245,7 @@ def main(args):
     params = get_params(args)
 
     # Checking if a gpu is available
-    # cuda.set_device(0)
+    cuda.set_device(0)
     train_on_gpu = cuda.is_available()
     print(f'Training on GPU: {train_on_gpu}\n')
 
@@ -281,7 +278,7 @@ if __name__ == '__main__':
                         help='Path to the folder where execution results are saved.')
     parser.add_argument('-bs', '--batch-size', type=int, default=128, dest='batch_size',
                         help='Size of the batch to be feed to the network. Default is 128.')
-    parser.add_argument('-op', '--optimizer', type=str, choices=['sgd', 'adam'], default='sgd', dest='optimizer',
+    parser.add_argument('-op', '--optimizer', type=str, choices=['SGD', 'ADAM'], default='SGD', dest='optimizer',
                         help='Name of the optimizer to be used. Default is SGD.')
     parser.add_argument('-cr', '--criterion', type=str, choices=['cross_entropy', 'log_likelihood'], default='cross_entropy', dest='criterion',
                         help='Criterion used for the loss function. Default is Cross Entropy.')
