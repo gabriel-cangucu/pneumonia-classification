@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import argparse
 import os
 from datetime import datetime
@@ -8,11 +9,10 @@ import torch
 from torch import cuda
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import transforms, datasets
-from torch.utils.data import DataLoader
 
 # Importing custom models
 from models import vgg16
+from data_loader import load_data
 
 
 def get_params(args):
@@ -33,54 +33,6 @@ def get_params(args):
 def get_model_name(params):
     model_name = f'vgg16_batch{params["batch_size"]}_op{params["optimizer"]}_loss{params["criterion"]}_lr{params["learning_rate"]}_epochs{params["num_epochs"]}_{params["execution_start_time"]}.pt'
     return model_name
-
-def load_data(params):
-    image_transforms = {
-        # Using data augmentation on train data only
-        'train': transforms.Compose([
-                transforms.RandomResizedCrop(size=256, scale=(0.8, 1.0)),
-                transforms.RandomRotation(degrees=15),
-                transforms.ColorJitter(),
-                transforms.RandomHorizontalFlip(),
-                transforms.CenterCrop(size=224),
-                transforms.ToTensor(),
-                # The mean and std used are ImageNet standards
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ]),
-
-        'val': transforms.Compose([
-                transforms.Resize(size=256),
-                transforms.CenterCrop(size=224),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ]),
-        
-        'test': transforms.Compose([
-                transforms.Resize(size=256),
-                transforms.CenterCrop(size=224),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-    }
-
-    train_data_path = params['data_path'] + '/train'
-    val_data_path = params['data_path'] + '/val'
-    test_data_path = params['data_path'] + '/test'
-    
-    data = {
-        'train': datasets.ImageFolder(root=train_data_path, transform=image_transforms['train']),
-        'val': datasets.ImageFolder(root=val_data_path, transform=image_transforms['val']),
-        'test': datasets.ImageFolder(root=test_data_path, transform=image_transforms['test']),
-    }
-
-    # Dataloader iterators
-    dataloaders = {
-        'train': DataLoader(data['train'], batch_size=params['batch_size'], shuffle=True),
-        'val': DataLoader(data['val'], batch_size=params['batch_size'], shuffle=True),
-        'test': DataLoader(data['test'], batch_size=params['batch_size'], shuffle=True)
-    }
-
-    return data, dataloaders
 
 
 def evaluate_model(model, criterion, data_loader, train_on_gpu=True):
@@ -120,9 +72,14 @@ def evaluate_model(model, criterion, data_loader, train_on_gpu=True):
     
     return val_loss, val_acc
 
-def train_model(params, data, data_loader, results_file, train_on_gpu=True):
-    model = vgg16(params)
 
+def predict_and_save(model_name, results, results_path, train_on_gpu=True):
+    # Saving results in a CSV file
+    train_info = pd.DataFrame.from_dict(results)
+    train_info.to_csv(os.path.join(results_path, model_name+'.csv'), index=False)
+
+
+def train_model(model, params, data, data_loader, results_file, train_on_gpu=True):
     # Mapping class names to indexes
     model.class_to_idx = data['train'].class_to_idx
     model.idx_to_class = {
@@ -213,7 +170,7 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
         train_acc = train_acc / len(data_loader['train'].dataset)
 
         # Begin the validation process
-        val_loss, val_acc = evaluate_model(model, criterion, data_loader)
+        val_loss, val_acc = evaluate_model(model, criterion, data_loader, train_on_gpu=train_on_gpu)
 
         # If the loss decreases, the model is saved
         if val_loss < best_val_loss:
@@ -239,6 +196,15 @@ def train_model(params, data, data_loader, results_file, train_on_gpu=True):
     print(f'Best epoch: {best_epoch} with loss {best_val_loss:.2f} and validation accuracy {100 * best_val_acc}%.')
     print(f'Results saved to {results_file}.')
 
+    results = {
+        'train_loss': train_loss_list,
+        'train_acc': train_acc_list,
+        'val_loss': val_loss_list,
+        'val_acc': val_acc_list
+    }
+
+    return results
+
 
 def main(args):
     # Getting the parser arguments
@@ -261,8 +227,13 @@ def main(args):
 
         print(f'\'{split}\' split has {features.shape[0]} instances.')
 
+    # Defining the model
+    model = vgg16(params)
     model_name = get_model_name(params)
-    train_model(params, data, data_loader, model_name, train_on_gpu=train_on_gpu)
+
+    # Training, testing and saving results
+    train_results = train_model(model, params, data, data_loader, model_name, train_on_gpu=train_on_gpu)
+    predict_and_save(model_name, train_results, params['results_path'], train_on_gpu=train_on_gpu)
 
 
 if __name__ == '__main__':
