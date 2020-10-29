@@ -1,9 +1,40 @@
 import torch.nn as nn
 from torch import cuda
 from torchvision import models
-from torchsummary import summary
 
-def vgg16(params):
+
+class CNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Flatten(), 
+            nn.Linear(200704, 32),
+            nn.ReLU(),
+            nn.Linear(32, 2))
+        
+    def forward(self, xb):
+        return self.network(xb)
+
+
+def vgg16():
     # Loading the model with pretrained weights
     model = models.vgg16(pretrained=True)
 
@@ -25,12 +56,5 @@ def vgg16(params):
 
     if cuda.is_available():
         model = model.to('cuda')
-    
-    # print(summary(
-    #     model,
-    #     input_size=(3, 224, 224),
-    #     batch_size=params['batch_size'],
-    #     device='cuda'
-    # ))
 
     return model

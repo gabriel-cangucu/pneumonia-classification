@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 # Importing custom models
-from models import vgg16
+from models import CNN, vgg16
 from data_loader import load_data
 
 
@@ -20,6 +20,7 @@ def get_params(args):
 
     params['data_path'] = args.data_path
     params['results_path'] = args.results_path
+    params['model'] = args.model
     params['batch_size'] = args.batch_size
     params['optimizer'] = args.optimizer
     params['criterion'] = args.criterion
@@ -31,7 +32,7 @@ def get_params(args):
 
 
 def get_model_name(params):
-    model_name = f'vgg16_batch{params["batch_size"]}_op{params["optimizer"]}_loss{params["criterion"]}_lr{params["learning_rate"]}_epochs{params["num_epochs"]}_{params["execution_start_time"]}.pt'
+    model_name = f'{params["model"]}_batch{params["batch_size"]}_op{params["optimizer"]}_loss{params["criterion"]}_lr{params["learning_rate"]}_epochs{params["num_epochs"]}_{params["execution_start_time"]}.pt'
     return model_name
 
 
@@ -71,12 +72,6 @@ def evaluate_model(model, criterion, data_loader, train_on_gpu=True):
         val_acc = val_acc / len(data_loader['val'].dataset)
     
     return val_loss, val_acc
-
-
-def predict_and_save(model_name, results, results_path, train_on_gpu=True):
-    # Saving results in a CSV file
-    train_info = pd.DataFrame.from_dict(results)
-    train_info.to_csv(os.path.join(results_path, model_name+'.csv'), index=False)
 
 
 def train_model(model, params, data, data_loader, results_file, train_on_gpu=True):
@@ -194,7 +189,6 @@ def train_model(model, params, data, data_loader, results_file, train_on_gpu=Tru
     total_time = timer() - start
     print(f'\nDone training! Total time elapsed: {total_time:.2f} seconds.')
     print(f'Best epoch: {best_epoch} with loss {best_val_loss:.2f} and validation accuracy {100 * best_val_acc}%.')
-    print(f'Results saved to {results_file}.')
 
     results = {
         'train_loss': train_loss_list,
@@ -204,6 +198,33 @@ def train_model(model, params, data, data_loader, results_file, train_on_gpu=Tru
     }
 
     return results
+
+
+def predict_and_save(model, model_name, data_loader, results, results_path, train_on_gpu=True):
+    # Tensor to store the confusion matrix
+    confusion_matrix = torch.zeros(2, 2)
+
+    print(f'\nPredicting with best model...')
+
+    with torch.no_grad():
+        for i, (features, labels) in enumerate(data_loader['test']):
+            # Tensor to gpu if available
+            if train_on_gpu:
+                features, labels = features.cuda(), labels.cuda()
+
+            # Making predictions
+            outputs = model(features)
+            _, preds = torch.max(outputs, 1)
+
+            for t, p in zip(labels.view(-1), preds.view(-1)):
+                confusion_matrix[t.long(), p.long()] += 1
+    
+    np.save(os.path.join(results_path, model_name), confusion_matrix)
+    print(f'Done! Results saved to {model_name}.')
+
+    # Saving results in a CSV file
+    train_info = pd.DataFrame.from_dict(results)
+    train_info.to_csv(os.path.join(results_path, model_name+'.csv'), index=False)
 
 
 def main(args):
@@ -228,12 +249,18 @@ def main(args):
         print(f'\'{split}\' split has {features.shape[0]} instances.')
 
     # Defining the model
-    model = vgg16(params)
+    if params['model'] == 'cnn':
+        model = CNN()
+    elif params['model'] == 'vgg16':
+        model = vgg16()
+    else:
+        raise ValueError("Model not found. Options available are 'cnn' and 'vgg16'.")
+
     model_name = get_model_name(params)
 
     # Training, testing and saving results
     train_results = train_model(model, params, data, data_loader, model_name, train_on_gpu=train_on_gpu)
-    predict_and_save(model_name, train_results, params['results_path'], train_on_gpu=train_on_gpu)
+    predict_and_save(model, model_name, data_loader, train_results, params['results_path'], train_on_gpu=train_on_gpu)
 
 
 if __name__ == '__main__':
@@ -247,6 +274,8 @@ if __name__ == '__main__':
                         help='Path to the dataset.')
     parser.add_argument('-rp', '--results-path', type=str, default=default_results_path, dest='results_path',
                         help='Path to the folder where execution results are saved.')
+    parser.add_argument('-mo', '--model', type=str, default='cnn', dest='model',
+                        help='Classifier to be used in training. Default is a custom CNN.')
     parser.add_argument('-bs', '--batch-size', type=int, default=128, dest='batch_size',
                         help='Size of the batch to be feed to the network. Default is 128.')
     parser.add_argument('-op', '--optimizer', type=str, choices=['SGD', 'ADAM'], default='SGD', dest='optimizer',
