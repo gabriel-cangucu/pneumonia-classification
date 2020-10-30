@@ -202,7 +202,7 @@ def train_model(model, params, data, data_loader, results_file, train_on_gpu=Tru
 
 def predict_and_save(model, model_name, data_loader, results, results_path, train_on_gpu=True):
     # Tensor to store the confusion matrix
-    confusion_matrix = torch.zeros(2, 2)
+    confusion_matrix = torch.zeros((2, 2), device='cpu')
 
     print(f'\nPredicting with best model...')
 
@@ -255,6 +255,9 @@ def main(args):
         model = vgg16()
     else:
         raise ValueError("Model not found. Options available are 'cnn' and 'vgg16'.")
+
+    if train_on_gpu:
+        model = model.to('cuda')
 
     model_name = get_model_name(params)
 

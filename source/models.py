@@ -1,5 +1,4 @@
 import torch.nn as nn
-from torch import cuda
 from torchvision import models
 
 
@@ -53,8 +52,5 @@ def vgg16():
         nn.Linear(256, n_classes),
         nn.LogSoftmax(dim=1)
     )
-
-    if cuda.is_available():
-        model = model.to('cuda')
 
     return model
