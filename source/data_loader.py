@@ -1,5 +1,8 @@
+import torch
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
+from torch.utils.data.sampler import WeightedRandomSampler
+
 
 def load_data(params):
     image_transforms = {
@@ -40,9 +43,15 @@ def load_data(params):
         'test': datasets.ImageFolder(root=test_data_path, transform=image_transforms['test']),
     }
 
+    # Defining a higher probability of choosing 'normal' images due to imbalancing
+    weights = 1. / torch.Tensor([1341, 3875])
+    samples_weights = weights[data['train'].targets]
+
+    sampler = WeightedRandomSampler(weights=samples_weights, num_samples=len(samples_weights), replacement=True)
+
     # Dataloader iterators
     dataloaders = {
-        'train': DataLoader(data['train'], batch_size=params['batch_size'], shuffle=True),
+        'train': DataLoader(data['train'], batch_size=params['batch_size'], sampler=sampler),
         'val': DataLoader(data['val'], batch_size=params['batch_size'], shuffle=True),
         'test': DataLoader(data['test'], batch_size=params['batch_size'], shuffle=True)
     }
